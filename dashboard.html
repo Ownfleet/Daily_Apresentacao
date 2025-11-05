@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Dashboard KPIs • Shopee</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
+
+<style>
+:root{
+  --brand:#ee4d2d;--brand2:#ff6b3d;--ink:#f8fafc;
+  --bg:#0b0f19;--card:#111827;--radius:18px;
+}
+*{box-sizing:border-box;font-family:'Plus Jakarta Sans',system-ui,Arial;margin:0;padding:0}
+body{
+  background:var(--bg);color:var(--ink);overflow:hidden;
+  height:100vh;display:flex;flex-direction:column;
+}
+
+/* Header */
+header{
+  background:linear-gradient(135deg,var(--brand),var(--brand2));
+  text-align:center;padding:12px 0;box-shadow:0 5px 25px rgba(238,77,45,.4);
+}
+header h1{font-weight:900;font-size:clamp(22px,4vw,32px)}
+header small{opacity:.9;font-size:clamp(12px,2.5vw,16px)}
+
+/* Filtros */
+.controls{
+  display:flex;flex-wrap:wrap;justify-content:center;align-items:center;
+  gap:12px;background:#111827;padding:12px 16px;border-radius:var(--radius);
+  margin:10px auto;max-width:95%;box-shadow:0 5px 25px rgba(0,0,0,.5);
+  position:relative;z-index:10;
+}
+.controls label{font-weight:800;color:#e5edf6}
+select,input,button{
+  background:#162033;border:1px solid #24304a;border-radius:8px;
+  color:white;padding:10px 14px;font-size:15px;outline:none;
+}
+input[type="date"]{min-width:160px;color:#fff;cursor:pointer}
+input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(1);opacity:.9;cursor:pointer}
+button{background:var(--brand);cursor:pointer;font-weight:700;border:none}
+button:hover{filter:brightness(1.1)}
+.btn-secondary{background:#0f1626;border:1px solid #2b3446;color:#e5edf6}
+
+/* Slides horizontais */
+.stage{flex:1;display:flex;overflow-x:hidden;scroll-behavior:smooth;width:100%;position:relative;z-index:1}
+.slide{flex:0 0 100%;display:flex;align-items:center;justify-content:center;height:100%;transition:transform .6s ease;position:relative}
+canvas{
+  width:80%!important;
+  height:75%!important;
+  background:#0f172a;
+  border-radius:12px;
+  padding:8px;
+  box-shadow:0 10px 40px rgba(0,0,0,.5);
+}
+/* Aumenta tamanho e peso das datas do eixo X */
+.chartjs-render-monitor text{
+  font-size:16px!important;
+  font-weight:700!important;
+}
+
+/* Painel lateral de metas */
+.meta-box{
+  position:absolute;right:30px;top:50%;transform:translateY(-50%);
+  background:linear-gradient(135deg,#1a2236,#141a28);
+  border:2px solid var(--brand);border-radius:12px;
+  padding:14px 20px;color:#fff;box-shadow:0 5px 20px rgba(238,77,45,.4);
+  font-weight:700;min-width:120px;text-align:center;
+}
+.meta-box span{display:block;font-size:18px}
+.meta-title{font-size:15px;opacity:.8;margin-bottom:4px}
+
+/* Navegação */
+.nav{position:absolute;bottom:16px;width:100%;display:flex;justify-content:space-between;padding:0 18px;z-index:5}
+.nav button{padding:10px 14px;border-radius:10px;border:none;font-weight:700;background:var(--brand);color:#fff}
+.nav .ghost{background:#0f1626;border:1px solid #2b3446}
+.nav button:hover{filter:brightness(1.1)}
+
+/* Indicadores */
+.footer{position:absolute;bottom:6px;width:100%;text-align:center;z-index:3}
+.dot{display:inline-block;width:10px;height:10px;margin:0 3px;border-radius:50%;background:#2b3446;transition:background .3s}
+.dot.active{background:var(--brand2)}
+
+/* Modal apresentação */
+.modal{
+  display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);
+  backdrop-filter:blur(8px);align-items:center;justify-content:center;
+  z-index:50;animation:fade .4s ease forwards;
+}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.modal.active{display:flex}
+.modal-content{
+  background:#0e1420;border-radius:20px;width:95%;height:90%;
+  box-shadow:0 0 40px rgba(238,77,45,.4);position:relative;
+  display:flex;flex-direction:column;
+}
+/* BOTÃO X – garantir clique acima dos canvases */
+.modal-close{
+  position:absolute;top:12px;right:18px;font-weight:800;font-size:22px;
+  cursor:pointer;color:#fff;background:var(--brand);padding:6px 12px;
+  border-radius:10px;z-index:1001;pointer-events:auto; /* 👈 fix */
+}
+.modal-close:hover{filter:brightness(1.2)}
+
+/* Animação suave nas barras */
+@keyframes growBar {
+  from {transform:scaleY(0);opacity:0;}
+  to {transform:scaleY(1);opacity:1;}
+}
+.chartjs-render-monitor rect {
+  transform-origin:bottom;
+  animation:growBar .6s ease-out forwards;
+}
+
+/* Responsivo */
+@media (max-width:768px){
+  canvas{width:95%!important;height:70%!important}
+  .meta-box{right:12px;padding:10px;min-width:90px;font-size:14px}
+  .meta-title{font-size:13px}
+  .nav button{padding:8px 12px;font-size:14px}
+  .controls{flex-direction:column;gap:8px;padding:14px}
+  select,input,button{width:100%;font-size:14px}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Dashboard de KPIs</h1>
+  <small>Performance • SPR • Share Moto • Volumoso</small>
+</header>
+
+<div class="controls">
+  <label>Hub:</label>
+  <select id="hubView"></select>
+  <label>De</label>
+  <input type="date" id="fromDate">
+  <label>Até</label>
+  <input type="date" id="toDate">
+  <button id="btnApply">Aplicar</button>
+  <button id="btnFull" class="btn-secondary">Apresentar ⛶</button>
+</div>
+
+<!-- Modal apresentação -->
+<div class="modal" id="modal">
+  <div class="modal-content" id="modalContent">
+    <span class="modal-close" id="closeModalBtn">×</span>
+    <div class="stage" id="stage">
+      <section class="slide"><canvas id="chartPerf"></canvas><div class="meta-box"><span class="meta-title">Meta</span><span id="metaPerf">--</span></div></section>
+      <section class="slide"><canvas id="chartSPR"></canvas><div class="meta-box"><span class="meta-title">Meta</span><span id="metaSpr">--</span></div></section>
+      <section class="slide"><canvas id="chartShare"></canvas><div class="meta-box"><span class="meta-title">Meta</span><span id="metaShare">--</span></div></section>
+      <section class="slide"><canvas id="chartVol"></canvas><div class="meta-box"><span class="meta-title">Meta</span><span id="metaVol">--</span></div></section>
+    </div>
+    <div class="nav">
+      <button id="btnPrev" class="ghost">◀︎ Anterior</button>
+      <button id="btnNext">Próximo ▶︎</button>
+    </div>
+    <div class="footer" id="dots"></div>
+  </div>
+</div>
+
+<script>
+/* ===== SUPABASE ===== */
+const SUPABASE_URL="https://tflfageylbpvsvtjklsd.supabase.co";
+const SUPABASE_ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRmbGZhZ2V5bGJwdnN2dGprbHNkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIzMTU0MDcsImV4cCI6MjA3Nzg5MTQwN30.7qsg723aIgCFaOXTsG2gESeJ3MEMcvOhJjPFCV0mBiw";
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+
+/* ===== CHART.JS ===== */
+Chart.register(ChartDataLabels);
+const charts={};
+function fmtDate(iso){const [y,m,d]=iso.split("-");return`${d}/${m}`;}
+const to1=n=>n==null||isNaN(n)?null:Number(n).toFixed(1);
+const to2=n=>n==null||isNaN(n)?null:Number(n).toFixed(2);
+function calcDeltas(arr){if(!arr||arr.length<2)return null;return arr.map((v,i)=>i===0?null:(Number(v)-Number(arr[i-1])));}
+
+function makeChart(el,{title,labels,data,color,isPercent,deltas}){
+  if(el.chart) el.chart.destroy();
+  el.chart=new Chart(el,{
+    type:'bar',
+    data:{labels,datasets:[{label:'Resultado',data,backgroundColor:color,borderWidth:0}]},
+    options:{
+      maintainAspectRatio:false,responsive:true,
+      plugins:{
+        legend:{display:false},
+        title:{display:true,text:title,color:'#fff',font:{weight:'900',size:22}},
+        datalabels:{
+          color:'#fff',anchor:'center',align:'center',
+          font:ctx=>({weight:'900',size:labels.length<=4?30:20}),
+          formatter:v=>{
+            if(v==null) return '';
+            const val=to1(v);
+            return isPercent?val+'%':val;
+          }
+        },
+        tooltip:{
+          callbacks:{
+            label:(ctx)=>{
+              const v=ctx.parsed.y;
+              const val=isPercent?to1(v)+'%':to1(v);
+              if(!isPercent)return val;
+              const i=ctx.dataIndex;
+              if(i===0||!deltas)return val;
+              const delta=deltas[i];
+              const arrow=delta>0?'↑':delta<0?'↓':'→';
+              return`${val} ${arrow} ${(delta>0?'+':'')+to2(delta)}%`;
+            }
+          }
+        }
+      },
+      scales:{
+        x:{
+          ticks:{color:'#e5edf6',font:{weight:'800',size:16},padding:8},
+          grid:{display:false}
+        },
+        y:{
+          beginAtZero:true,
+          ticks:{color:'#9fb0c0',font:{size:13}},
+          grid:{color:'rgba(255,255,255,.05)'}
+        }
+      }
+    },
+    plugins:[ChartDataLabels]
+  });
+}
+
+/* ===== LOAD DATA ===== */
+async function loadHubs(){
+  const {data,error}=await sb.from('hubs').select('*').order('name');
+  if(error){alert(error.message);return;}
+  hubView.innerHTML=data.map(h=>`<option value="${h.id}">${h.name}</option>`).join('');
+}
+
+async function loadCharts(){
+  const hub_id=hubView.value, f=fromDate.value, t=toDate.value;
+  let q=sb.from('kpi_daily').select('*').eq('hub_id',hub_id);
+  if(f && t) q=q.gte('kpi_date',f).lte('kpi_date',t);
+  const {data,error}=await q.order('kpi_date');
+  if(error||!data?.length){alert('Sem dados.');return;}
+  const labels=data.map(r=>fmtDate(r.kpi_date));
+  const perf=data.map(r=>r.performance_result);
+  const spr=data.map(r=>r.spr_result);
+  const share=data.map(r=>r.share_moto_result);
+  const vol=data.map(r=>r.volumoso_result);
+  const {data:meta}=await sb.from('kpi_meta').select('*').eq('hub_id',hub_id).eq('active',true).maybeSingle();
+  const mPerf=meta?.performance_meta??98,mSpr=meta?.spr_meta??10,mShare=meta?.share_moto_meta??18.2,mVol=meta?.volumoso_meta??0;
+  metaPerf.textContent=mPerf+'%';metaSpr.textContent=mSpr;metaShare.textContent=mShare+'%';metaVol.textContent=mVol;
+  charts.perf=makeChart(chartPerf,{title:'Performance (%)',labels,data:perf,color:'#ee4d2d',isPercent:true,deltas:calcDeltas(perf)});
+  charts.spr=makeChart(chartSPR,{title:'SPR (Valor)',labels,data:spr,color:'#2563eb',isPercent:false});
+  charts.share=makeChart(chartShare,{title:'Share Moto (%)',labels,data:share,color:'#16a34a',isPercent:true,deltas:calcDeltas(share)});
+  charts.vol=makeChart(chartVol,{title:'Volumoso (Qtd)',labels,data:vol,color:'#f59e0b',isPercent:false});
+  openModal(true);
+}
+
+/* ===== SLIDES ===== */
+const stage=document.getElementById('stage');
+const slides=document.querySelectorAll('.slide');
+let idx=0;
+function updateDots(){dots.innerHTML=[...slides].map((_,i)=>`<span class="dot ${i===idx?'active':''}"></span>`).join('');}
+function showSlide(i){idx=i;stage.scrollTo({left:stage.clientWidth*i,behavior:'smooth'});updateDots();}
+btnNext.onclick=()=>showSlide((idx+1)%slides.length);
+btnPrev.onclick=()=>showSlide((idx-1+slides.length)%slides.length);
+
+/* ===== MODAL / FULLSCREEN ===== */
+const modal=document.getElementById('modal');
+const modalContent=document.getElementById('modalContent');
+const closeModalBtn=document.getElementById('closeModalBtn');
+
+function openModal(fullscreen=false){
+  modal.classList.add('active');
+  updateDots();
+  if(fullscreen && modalContent.requestFullscreen){
+    modalContent.requestFullscreen().catch(()=>{});
+  }
+}
+
+/* fechamento robusto: sai do fullscreen primeiro */
+function handleClose(){
+  const hide = ()=> modal.classList.remove('active');
+  if(document.fullscreenElement){
+    document.exitFullscreen().catch(()=>{}).finally(hide);
+  }else{
+    hide();
+  }
+}
+closeModalBtn.addEventListener('click', handleClose);
+
+/* fecha ao clicar fora do conteúdo */
+window.addEventListener('click',(e)=>{
+  if(e.target===modal){ handleClose(); }
+});
+
+/* mantém estado sincronizado quando sai do fullscreen por ESC */
+document.addEventListener('fullscreenchange', ()=>{
+  if(!document.fullscreenElement && modal.classList.contains('active')){
+    // só garante que o modal continue aberto fora do fullscreen
+    // (não fecha aqui para não surpreender o apresentador)
+  }
+});
+
+/* ===== TECLADO ===== */
+document.addEventListener('keydown',(e)=>{
+  if(!modal.classList.contains('active'))return;
+  if(e.key==='ArrowRight')btnNext.click();
+  if(e.key==='ArrowLeft')btnPrev.click();
+  if(e.key==='Escape')handleClose();
+});
+
+/* INIT */
+window.onload=async()=>{await loadHubs();updateDots();}
+btnApply.onclick=loadCharts;
+btnFull.onclick=()=>openModal(true);
+</script>
+</body>
+</html>

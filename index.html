@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Registro Diário • KPIs</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+
+<style>
+:root{
+  --brand:#ee4d2d;--brand2:#ff6b3d;
+  --bg:#0b0f19;--card:#111827;--ink:#f8fafc;
+  --radius:18px;--shadow:0 12px 50px rgba(238,77,45,.3);
+}
+*{box-sizing:border-box;margin:0;padding:0;font-family:'Plus Jakarta Sans',system-ui,Arial}
+body{
+  background:var(--bg);color:var(--ink);
+  display:flex;justify-content:center;align-items:center;
+  min-height:100vh;overflow:hidden;
+}
+button.openModal{
+  background:var(--brand);color:#fff;font-weight:800;font-size:18px;
+  padding:16px 30px;border:none;border-radius:14px;
+  cursor:pointer;transition:.3s;box-shadow:var(--shadow);
+}
+button.openModal:hover{filter:brightness(1.1);transform:translateY(-2px);}
+.modal{
+  display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);
+  backdrop-filter:blur(8px);justify-content:center;align-items:center;
+  z-index:20;animation:fade .4s ease forwards;
+}
+.modal.active{display:flex;}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.modal-content{
+  background:linear-gradient(180deg,#141a25,#0e131f);
+  padding:30px 28px;border-radius:var(--radius);
+  box-shadow:var(--shadow);width:95%;max-width:480px;position:relative;
+}
+.modal-close{
+  position:absolute;top:12px;right:16px;font-weight:900;
+  background:var(--brand);color:#fff;border:none;
+  border-radius:10px;padding:4px 10px;font-size:20px;
+  cursor:pointer;transition:.25s;
+}
+.modal-close:hover{filter:brightness(1.1);}
+h1{text-align:center;margin-bottom:22px;font-weight:900;color:var(--brand2);}
+label{font-weight:600;display:block;margin-top:10px;color:#e5edf6;}
+input,select,button.saveBtn{
+  width:100%;padding:12px;margin-top:6px;
+  border:none;border-radius:10px;font-size:15px;
+}
+input,select{
+  background:#1a2233;color:#fff;border:1px solid #2b3549;transition:.2s;
+}
+input:focus,select:focus{
+  outline:none;border:1px solid var(--brand2);
+  box-shadow:0 0 8px rgba(255,107,61,.3);
+}
+button.saveBtn{
+  background:var(--brand2);color:#fff;font-weight:800;margin-top:22px;
+  cursor:pointer;transition:.3s;
+}
+button.saveBtn:hover{filter:brightness(1.1);transform:translateY(-2px);}
+.msg{text-align:center;margin-top:14px;font-weight:700;color:#cfd8ea;}
+
+/* Calendário: wrapper com input display + input date nativo ancorado */
+.date-wrapper{ position:relative; }
+.date-display{
+  width:100%; background:#1a2233; color:#fff; border:1px solid #2b3549;
+  border-radius:10px; padding:12px; font-size:15px; cursor:pointer;
+}
+.date-native{
+  position:absolute; inset:0; opacity:0; cursor:pointer;
+}
+/* Ícone */
+.calendar-icon{
+  position:absolute; right:14px; top:50%; transform:translateY(-50%);
+  font-size:18px; pointer-events:none; opacity:.75;
+}
+
+/* Modal de Edição (lista de datas) */
+.modal-list{
+  display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);
+  backdrop-filter:blur(8px);justify-content:center;align-items:center;z-index:25;
+}
+.modal-list.active{display:flex;}
+.modal-list-content{
+  background:linear-gradient(180deg,#151c29,#0d121d);
+  padding:26px;border-radius:16px;
+  width:95%;max-width:400px;box-shadow:var(--shadow);
+}
+.modal-list-content h2{text-align:center;margin-bottom:14px;color:var(--brand);}
+.modal-list-content ul{list-style:none;padding:0;margin:0;max-height:260px;overflow:auto;}
+.modal-list-content li{
+  background:#1a2333;margin:6px 0;padding:10px 14px;
+  border-radius:10px;cursor:pointer;
+  border:1px solid #2a3246;text-align:center;font-weight:600;
+}
+.modal-list-content li:hover{background:var(--brand2);}
+
+/* 🔸 Botões Flutuantes */
+.fab-container{
+  position:fixed;bottom:28px;right:28px;
+  display:flex;flex-direction:column;align-items:flex-end;
+  gap:12px;z-index:30;
+}
+.fab{
+  width:58px;height:58px;border-radius:50%;
+  background:var(--brand2);
+  color:#fff;font-size:22px;
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;transition:.3s;
+  box-shadow:0 6px 16px rgba(238,77,45,.35);
+}
+.fab:hover{ transform:translateY(-3px) scale(1.05); filter:brightness(1.1); }
+.fab-label{
+  background:#1a2233;color:#fff;padding:8px 14px;border-radius:10px;
+  margin-right:10px;font-size:14px;opacity:0;transform:translateX(10px);
+  transition:.25s;pointer-events:none;
+}
+.fab:hover + .fab-label, .fab-label:hover{ opacity:1;transform:translateX(0); }
+</style>
+</head>
+<body>
+
+<!-- Botão principal -->
+<button class="openModal" id="openModal">Registrar KPI</button>
+
+<!-- Modal principal -->
+<div class="modal" id="modal">
+  <div class="modal-content">
+    <button class="modal-close" id="closeModal">×</button>
+    <h1 id="modalTitle">Registrar KPI Diário</h1>
+
+    <label>Hub</label>
+    <select id="hubSelect"></select>
+
+    <label>Data</label>
+    <div class="date-wrapper">
+      <input type="text" id="kpiDateDisplay" class="date-display" placeholder="Selecione a data" readonly>
+      <input type="date" id="kpiDateNative" class="date-native">
+      <span class="calendar-icon">📅</span>
+    </div>
+
+    <label>Performance (%)</label>
+    <input type="text" id="perf" placeholder="Ex: 98.5">
+
+    <label>SPR (Valor)</label>
+    <input type="number" step="0.01" id="spr" placeholder="Ex: 10.2">
+
+    <label>Share Moto (%)</label>
+    <input type="text" id="share" placeholder="Ex: 18.2">
+
+    <label>Volumoso (Qtd)</label>
+    <input type="number" step="0.01" id="vol" placeholder="Ex: 3">
+
+    <div style="display:flex;gap:10px;margin-top:20px;">
+      <button class="saveBtn" id="saveBtn" style="flex:1;">Salvar Registro</button>
+      <button class="saveBtn" id="editBtn" style="flex:1;background:#0f172a;border:1px solid #2b3446;">Editar Registro</button>
+    </div>
+    <div id="msg" class="msg"></div>
+  </div>
+</div>
+
+<!-- Modal de seleção de datas -->
+<div class="modal-list" id="modalList">
+  <div class="modal-list-content">
+    <h2>Selecione a data para editar</h2>
+    <ul id="dateList"></ul>
+    <button id="closeList" class="saveBtn" style="margin-top:12px;background:#0f172a;border:1px solid #2b3446;">Cancelar</button>
+  </div>
+</div>
+
+<!-- 🔸 Botões Flutuantes -->
+<div class="fab-container">
+  <div style="display:flex;align-items:center;">
+    <div class="fab" onclick="window.location.href='meta.html'">🎯</div>
+    <div class="fab-label">Metas</div>
+  </div>
+  <div style="display:flex;align-items:center;">
+    <div class="fab" onclick="window.location.href='dashboard.html'">📊</div>
+    <div class="fab-label">Dashboard</div>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL="https://tflfageylbpvsvtjklsd.supabase.co";
+const SUPABASE_ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRmbGZhZ2V5bGJwdnN2dGprbHNkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIzMTU0MDcsImV4cCI6MjA3Nzg5MTQwN30.7qsg723aIgCFaOXTsG2gESeJ3MEMcvOhJjPFCV0mBiw";
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+
+const modal=document.getElementById('modal');
+const openModalBtn=document.getElementById('openModal');
+const closeModalBtn=document.getElementById('closeModal');
+const modalList=document.getElementById('modalList');
+const dateList=document.getElementById('dateList');
+const closeList=document.getElementById('closeList');
+const hubSelect=document.getElementById('hubSelect');
+const msg=document.getElementById('msg');
+const saveBtn=document.getElementById('saveBtn');
+const editBtn=document.getElementById('editBtn');
+const title=document.getElementById('modalTitle');
+
+const dateDisplay=document.getElementById('kpiDateDisplay');
+const dateNative=document.getElementById('kpiDateNative');
+
+let editingId=null;
+
+// abrir/fechar modal principal
+openModalBtn.onclick=()=>modal.classList.add('active');
+closeModalBtn.onclick=()=>modal.classList.remove('active');
+window.onclick=e=>{if(e.target===modal)modal.classList.remove('active');if(e.target===modalList)modalList.classList.remove('active');};
+closeList.onclick=()=>modalList.classList.remove('active');
+
+// sincroniza datepicker nativo com o display (dd/mm/aaaa)
+dateNative.addEventListener('change', ()=>{
+  if(!dateNative.value){ dateDisplay.value=''; return; }
+  const d=new Date(dateNative.value+"T00:00:00");
+  dateDisplay.value = d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'});
+});
+// abrir calendário clicando no display
+dateDisplay.addEventListener('click', ()=> dateNative.showPicker?.());
+
+// permitir ponto nos campos %
+function enforceDecimalPoint(id){
+  const el=document.getElementById(id);
+  el.addEventListener("input",()=>{
+    el.value=el.value.replace(",","."); 
+    el.value=el.value.replace(/[^0-9.]/g,"");
+    const parts=el.value.split(".");
+    if(parts.length>2){el.value=parts[0]+"."+parts.slice(1).join("");}
+  });
+  el.addEventListener("blur",()=>{
+    if(el.value!==""){el.value=parseFloat(el.value).toFixed(2);}
+  });
+}
+["perf","share"].forEach(enforceDecimalPoint);
+
+// carregar hubs
+async function loadHubs(){
+  const {data,error}=await sb.from('hubs').select('*').order('name');
+  if(error){msg.textContent="Erro: "+error.message;return;}
+  hubSelect.innerHTML=data.map(h=>`<option value="${h.id}">${h.name}</option>`).join('');
+}
+loadHubs();
+
+// botão editar abre lista de datas
+editBtn.onclick=async ()=>{
+  const hub_id=hubSelect.value;
+  if(!hub_id){msg.textContent="⚠️ Selecione um hub antes de editar.";return;}
+  msg.textContent="⏳ Carregando registros...";
+  const {data,error}=await sb.from('kpi_daily').select('id,kpi_date').eq('hub_id',hub_id).order('kpi_date',{ascending:false});
+  if(error){msg.textContent="Erro ao carregar.";return;}
+  if(!data.length){msg.textContent="📭 Nenhum registro encontrado.";return;}
+  dateList.innerHTML=data.map(r=>`<li data-id="${r.id}">${new Date(r.kpi_date).toLocaleDateString('pt-BR')}</li>`).join('');
+  modalList.classList.add('active');
+  msg.textContent="";
+  document.querySelectorAll('#dateList li').forEach(li=>{
+    li.onclick=()=>loadKpiForEdit(li.dataset.id);
+  });
+};
+
+// carregar dados do registro escolhido
+async function loadKpiForEdit(id){
+  const {data,error}=await sb.from('kpi_daily').select('*').eq('id',id).single();
+  if(error||!data){msg.textContent="Erro ao carregar registro.";return;}
+  // setar data nos dois campos
+  dateNative.value=data.kpi_date; // YYYY-MM-DD
+  const d=new Date(data.kpi_date+"T00:00:00");
+  dateDisplay.value=d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'});
+  // valores
+  document.getElementById('perf').value=(data.performance_result??'');
+  document.getElementById('spr').value=(data.spr_result??'');
+  document.getElementById('share').value=(data.share_moto_result??'');
+  document.getElementById('vol').value=(data.volumoso_result??'');
+  editingId=id;
+  title.textContent="Editar Registro";
+  saveBtn.textContent="Salvar Edição";
+  modalList.classList.remove('active');
+  msg.textContent="✏️ Editando registro de "+d.toLocaleDateString('pt-BR');
+}
+
+// salvar ou atualizar
+async function saveKpi(){
+  const hub_id=hubSelect.value;
+  const isoDate=dateNative.value; // YYYY-MM-DD do input nativo (garante âncora correta)
+  if(!hub_id||!isoDate){msg.textContent="⚠️ Selecione o hub e a data.";return;}
+
+  const row={
+    hub_id,
+    kpi_date:isoDate,
+    performance_result:Number(document.getElementById('perf').value),
+    spr_result:Number(document.getElementById('spr').value),
+    share_moto_result:Number(document.getElementById('share').value),
+    volumoso_result:Number(document.getElementById('vol').value)
+  };
+
+  if(editingId){
+    const {error}=await sb.from('kpi_daily').update(row).eq('id',editingId);
+    msg.textContent=error?"❌ Erro: "+error.message:"✅ Edição salva com sucesso!";
+    editingId=null;
+    saveBtn.textContent="Salvar Registro";
+    title.textContent="Registrar KPI Diário";
+  }else{
+    const {error}=await sb.from('kpi_daily').insert(row);
+    msg.textContent=error?"❌ Erro: "+error.message:"✅ Registro salvo com sucesso!";
+  }
+}
+saveBtn.onclick=saveKpi;
+
+// abrir modal já focado
+openModalBtn.addEventListener('click',()=> setTimeout(()=>dateDisplay.focus(),50));
+</script>
+</body>
+</html>
